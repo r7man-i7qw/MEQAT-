@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مِيقات</title>
+<style>
+:root{--bg:#FAF9F6;--sage:#8A9A5B;--ink:#333;--gold:#C6A96B}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Tajawal,system-ui,sans-serif;padding:env(safe-area-inset-top) 16px 24px}
+h1{margin:20px 0 2px;color:var(--sage);font-size:28px}
+.sub{color:var(--gold);margin:0 0 16px}
+.card{background:#fff;border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 1px 6px rgba(0,0,0,.05)}
+.next{text-align:center}.next b{font-size:22px}.cd{font-size:34px;color:var(--sage);letter-spacing:2px;direction:ltr}
+.row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee;font-size:18px}
+.row:last-child{border:0}.row.on{color:var(--sage);font-weight:700}
+button,select{width:100%;padding:14px;border-radius:14px;border:0;font:inherit;margin-top:8px}
+button{background:var(--sage);color:#fff}
+select{background:#fff;border:1px solid #ddd}
+#st{text-align:center;color:#777;font-size:14px;min-height:20px}
+</style>
+</head>
+<body>
+<h1>مِيقات</h1><p class="sub">رفيقك إلى الصلاة</p>
+<div class="card next"><div>الصلاة القادمة: <b id="nn">—</b></div><div class="cd" id="cd">--:--:--</div></div>
+<div class="card"><div id="dt" style="color:#777;margin-bottom:6px"></div><div id="list"></div></div>
+<select id="m">
+<option value="5">الهيئة المصرية العامة للمساحة</option>
+<option value="4">أم القرى (مكة)</option>
+<option value="3">رابطة العالم الإسلامي</option>
+<option value="2">أمريكا الشمالية (ISNA)</option>
+</select>
+<button onclick="load()">تحديث الموقع والمواقيت</button>
+<p id="st"></p>
+<script>
+const N={Fajr:'الفجر',Dhuhr:'الظهر',Asr:'العصر',Maghrib:'المغرب',Isha:'العشاء'};
+const $=i=>document.getElementById(i);
+let all=[],days=[];
+const st=t=>$('st').textContent=t;
+try{$('m').value=localStorage.getItem('m')||'5'}catch(e){}
+function ts(day,k){
+  const [h,m]=day.timings[k].slice(0,5).split(':').map(Number);
+  const [d,mo,y]=day.date.gregorian.date.split('-').map(Number);
+  return new Date(y,mo-1,d,h,m).getTime();
+}
+function load(){
+  st('جارٍ تحديد الموقع…');
+  const m=$('m').value;
+  try{localStorage.setItem('m',m)}catch(e){}
+  navigator.geolocation.getCurrentPosition(async p=>{
+    try{
+      st('جارٍ جلب المواقيت…');
+      const n=new Date(),q=`?latitude=${p.coords.latitude}&longitude=${p.coords.longitude}&method=${m}`;
+      const ms=[0,1].map(i=>{const d=new Date(n.getFullYear(),n.getMonth()+i,1);return d.getFullYear()+'/'+(d.getMonth()+1)});
+      days=(await Promise.all(ms.map(x=>fetch('https://api.aladhan.com/v1/calendar/'+x+q).then(r=>r.json()).then(j=>j.data)))).flat();
+      all=[];
+      days.forEach(d=>Object.keys(N).forEach(k=>all.push({name:N[k],ts:ts(d,k)})));
+      render();
+      const P=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Meqat;
+      if(P){const r=await P.schedule({times:all.filter(x=>x.ts>Date.now()&&x.ts<Date.now()+14*864e5)});st('تمت جدولة '+r.count+' تنبيه أذان');}
+      else st('تم تحديث المواقيت (الجدولة تعمل داخل تطبيق Android فقط)');
+    }catch(e){st('تعذّر الجلب، تأكد من الإنترنت')}
+  },()=>st('لم يتم السماح بالموقع'),{enableHighAccuracy:false,timeout:20000});
+}
+function render(){
+  const n=new Date(),key=String(n.getDate()).padStart(2,'0')+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+n.getFullYear();
+  const d=days.find(x=>x.date.gregorian.date===key);
+  if(!d)return;
+  const h=d.date.hijri;
+  $('dt').textContent=h.day+' '+h.month.ar+' '+h.year+' هـ  |  '+n.toLocaleDateString('ar-EG',{day:'numeric',month:'long',year:'numeric'});
+  const nx=all.filter(x=>x.ts>Date.now()).sort((a,b)=>a.ts-b.ts)[0];
+  $('list').innerHTML=Object.keys(N).map(k=>{
+    const t=ts(d,k);
+    return `<div class="row ${nx&&nx.ts===t?'on':''}"><span>${N[k]}</span><span>${d.timings[k].slice(0,5)}</span></div>`;
+  }).join('');
+}
+setInterval(()=>{
+  const nx=all.filter(x=>x.ts>Date.now()).sort((a,b)=>a.ts-b.ts)[0];
+  if(!nx)return;
+  const s=Math.floor((nx.ts-Date.now())/1000),f=v=>String(v).padStart(2,'0');
+  $('nn').textContent=nx.name;
+  $('cd').textContent=f(Math.floor(s/3600))+':'+f(Math.floor(s%3600/60))+':'+f(s%60);
+},1000);
+</script>
+</body>
+</html>
